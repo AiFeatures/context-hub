@@ -15,6 +15,7 @@ import { trackEvent, shutdownAnalytics, setCliVersion } from './lib/analytics.js
 import { error, output } from './lib/output.js';
 import { showWelcomeIfNeeded } from './lib/welcome.js';
 import { loadHelpContent } from './lib/help.js';
+import { rewriteRemovedCommand } from './lib/removed-commands.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
@@ -102,7 +103,7 @@ program.hook('preAction', async (thisCommand) => {
     await ensureRegistry();
   } catch (err) {
     await trackEvent('command_error', { command: cmdName, error_type: 'registry_unavailable' });
-    error(`Registry not available: ${err.message}. Run \`chub update\` to refresh remote registries, or check that local source paths in ~/.chub/config.yaml are correct.`, globalOpts);
+    error(`Registry not available. Run \`chub update\` to refresh remote registries, or check that local source paths in ~/.chub/config.yaml are correct. (cause: ${err.message})`, globalOpts);
   }
 });
 
@@ -125,7 +126,13 @@ if (helpAliasOperands.length > 0) {
 } else if (isRootVersionRequest(process.argv)) {
   process.stdout.write(`${pkg.version}\n`);
 } else {
-  program.parse();
+  const rewrite = rewriteRemovedCommand(process.argv);
+  if (rewrite) {
+    process.stderr.write(`${rewrite.message}\n`);
+    program.parse(rewrite.rewritten);
+  } else {
+    program.parse();
+  }
 }
 
 // Flush analytics before exit (best-effort)
